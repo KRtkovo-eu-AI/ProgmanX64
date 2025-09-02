@@ -1788,7 +1788,7 @@ BOOL APIENTRY AppInit(HANDLE hInstance, LPTSTR lpszCmdLine, int nCmdShow)
 
 	bInNtSetup = FALSE;
 
-	if (lpszCmdLine && *lpszCmdLine && !lstrcmpi(lpszCmdLine, TEXT("/NTSETUP"))) {
+        if (lpszCmdLine && *lpszCmdLine && !lstrcmpi(lpszCmdLine, TEXT("/NTSETUP"))) {
 		//
 		// Progman was started from ntsetup.exe, so it can be exited
 		// without causing NT Windows to exit.
@@ -1839,11 +1839,26 @@ BOOL APIENTRY AppInit(HANDLE hInstance, LPTSTR lpszCmdLine, int nCmdShow)
 			//
 			bExitWindows = TRUE;
 		}
-	}
+        }
 
-	if (lpszCmdLine && *lpszCmdLine) {
-		nCmdShow = SW_SHOWMINNOACTIVE;
-	}
+        /*
+         * When Progman is launched as the system shell (bExitWindows is TRUE),
+         * the frame window should mimic the behaviour of the original Windows
+         * Program Manager and start maximised.  The original WinMain entry point
+         * received the nCmdShow parameter from the system which carried this
+         * information.  The 64-bit port uses wmain and initialised nCmdShow to
+         * SW_SHOWNORMAL, causing the shell to appear in a restored state when
+         * used as the replacement shell.  Explicitly set the show state to
+         * SW_SHOWMAXIMIZED when running as the default shell so that the window
+         * occupies the whole screen on logon.
+         */
+        if (bExitWindows) {
+                nCmdShow = SW_SHOWMAXIMIZED;
+        }
+
+        if (lpszCmdLine && *lpszCmdLine) {
+                nCmdShow = SW_SHOWMINNOACTIVE;
+        }
 
 
 	/*
