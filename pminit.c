@@ -1788,7 +1788,7 @@ BOOL APIENTRY AppInit(HANDLE hInstance, LPTSTR lpszCmdLine, int nCmdShow)
 
 	bInNtSetup = FALSE;
 
-	if (lpszCmdLine && *lpszCmdLine && !lstrcmpi(lpszCmdLine, TEXT("/NTSETUP"))) {
+        if (lpszCmdLine && *lpszCmdLine && !lstrcmpi(lpszCmdLine, TEXT("/NTSETUP"))) {
 		//
 		// Progman was started from ntsetup.exe, so it can be exited
 		// without causing NT Windows to exit.
@@ -1797,53 +1797,74 @@ BOOL APIENTRY AppInit(HANDLE hInstance, LPTSTR lpszCmdLine, int nCmdShow)
 		bInNtSetup = TRUE;
 		*lpszCmdLine = 0;
 	} else {
-		HKEY hkeyWinlogon;
-		DWORD dwType;
-		DWORD cbBuffer;
-		LPTSTR lpt;
+               HKEY hkeyWinlogon;
+               DWORD dwType;
+               DWORD cbBuffer;
+               LPTSTR lpt;
+               HKEY hkRoots[] = {HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
-		/* Check if we should be the shell by looking at shell= line for WInlogon
-		 */
-		if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
-				TEXT("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"),
-				0,
-				KEY_READ,
-				&hkeyWinlogon) == ERROR_SUCCESS) {
-			cbBuffer = sizeof(szBuffer);
-			if (RegQueryValueEx(hkeyWinlogon,
-					TEXT("Shell"),
-					0,
-					&dwType,
-					(LPBYTE)szBuffer,
-					&cbBuffer) == ERROR_SUCCESS) {
-				CharLower(szBuffer);
-				lpt = szBuffer;
-				while (lpt = wcsstr(lpt, szProgman)) {
-					//
-					// we probably found progman
-					//
-					lpt += lstrlen(szProgman);
-					if (*lpt == TEXT(' ') || *lpt == TEXT('.') || *lpt == TEXT(',') || !*lpt)
-						bExitWindows = TRUE;
-				}
-			} else {
-				//
-				// assume that progman is the shell.
-				//
-				bExitWindows = TRUE;
-			}
-			RegCloseKey(hkeyWinlogon);
-		} else {
-			//
-			// assume that progman is the shell.
-			//
-			bExitWindows = TRUE;
-		}
-	}
+               /* Check if we should be the shell by looking at shell= line for Winlogon
+                * in both the current user and local machine hives.  The user hive takes
+                * precedence, mirroring the behaviour of the Windows shell lookup. */
+               for (int i = 0; i < (sizeof(hkRoots)/sizeof(hkRoots[0])) && !bExitWindows; i++) {
+                       if (RegOpenKeyEx(hkRoots[i],
+                                       TEXT("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"),
+                                       0,
+                                       KEY_READ,
+                                       &hkeyWinlogon) == ERROR_SUCCESS) {
+                               cbBuffer = sizeof(szBuffer);
+                               if (RegQueryValueEx(hkeyWinlogon,
+                                               TEXT("Shell"),
+                                               0,
+                                               &dwType,
+                                               (LPBYTE)szBuffer,
+                                               &cbBuffer) == ERROR_SUCCESS) {
+                                       CharLower(szBuffer);
+                                       lpt = szBuffer;
+                                       while (lpt = wcsstr(lpt, szProgman)) {
+                                               //
+                                               // we probably found progman
+                                               //
+                                               lpt += lstrlen(szProgman);
+                                               if (*lpt == TEXT(' ') || *lpt == TEXT('.') || *lpt == TEXT(',') || !*lpt) {
+                                                       bExitWindows = TRUE;
+                                                       break;
+                                               }
+                                       }
+                               } else {
+                                       //
+                                       // assume that progman is the shell.
+                                       //
+                                       bExitWindows = TRUE;
+                               }
+                               RegCloseKey(hkeyWinlogon);
+                       } else if (hkRoots[i] == HKEY_LOCAL_MACHINE) {
+                               //
+                               // assume that progman is the shell if the machine key is missing.
+                               //
+                               bExitWindows = TRUE;
+                       }
+               }
+        }
 
-	if (lpszCmdLine && *lpszCmdLine) {
-		nCmdShow = SW_SHOWMINNOACTIVE;
-	}
+        /*
+         * When Progman is launched as the system shell (bExitWindows is TRUE),
+         * the frame window should mimic the behaviour of the original Windows
+         * Program Manager and start maximised.  The original WinMain entry point
+         * received the nCmdShow parameter from the system which carried this
+         * information.  The 64-bit port uses wmain and initialised nCmdShow to
+         * SW_SHOWNORMAL, causing the shell to appear in a restored state when
+         * used as the replacement shell.  Explicitly set the show state to
+         * SW_SHOWMAXIMIZED when running as the default shell so that the window
+         * occupies the whole screen on logon.
+         */
+        if (bExitWindows) {
+                nCmdShow = SW_SHOWMAXIMIZED;
+        }
+
+        if (lpszCmdLine && *lpszCmdLine) {
+                nCmdShow = SW_SHOWMINNOACTIVE;
+        }
 
 
 	/*
